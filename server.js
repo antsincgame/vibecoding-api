@@ -13,8 +13,8 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const AW_ENDPOINT = process.env.AW_ENDPOINT || 'http://appwrite:80/v1';
-const AW_PROJECT = '69a6d9c200244c77a1b6';
-const AW_KEY = 'standard_768972aff6057a454bfb0ac334a6e0d83558da60f3de11d0080ed631901c52f2c37e9ed9fee55462e393ba9413723cafbdfb409cbf5d8d56d238050eaddc319a566371be672ac84e8e1b1fba335de5a753ab20ed2c2bb319e62ae0fbc85348ff479b23d6a8aa44d1a16cd0b29529807213c9e879dc1c26e16843001513d8397d';
+const AW_PROJECT = process.env.AW_PROJECT || '69a6d9c200244c77a1b6';
+const AW_KEY = process.env.AW_KEY || 'standard_768972aff6057a454bfb0ac334a6e0d83558da60f3de11d0080ed631901c52f2c37e9ed9fee55462e393ba9413723cafbdfb409cbf5d8d56d238050eaddc319a566371be672ac84e8e1b1fba335de5a753ab20ed2c2bb319e62ae0fbc85348ff479b23d6a8aa44d1a16cd0b29529807213c9e879dc1c26e16843001513d8397d';
 const DB_ID = 'vibecoding';
 
 function getAdminClient() {
