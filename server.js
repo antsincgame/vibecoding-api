@@ -236,7 +236,7 @@ app.post('/resend-webhook', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
-app.listen(3333, '127.0.0.1', () => console.log('VibeCoding API on port 3333'));
+app.listen(3333, '0.0.0.0', () => console.log('VibeCoding API on port 3333'));
 
 // 10. INBOUND EMAIL (Resend webhook for incoming emails)
 app.post('/inbound-email', async (req, res) => {
