@@ -312,3 +312,130 @@ app.post('/inbound-email', async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 app.listen(3333, '0.0.0.0', () => console.log('VibeCoding API on port 3333'));
+
+
+// 11. VERIFY EMAIL (token check + create user)
+app.post('/verify-email', async (req, res) => {
+  try {
+    const { token, email, password, fullName } = req.body;
+    if (!token || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+    const supabase = getAdmin();
+
+    const { data: tokens } = await supabase.from('auth_tokens')
+      .select('*').eq('token', token).eq('email', email).eq('token_type', 'email_verification').limit(1);
+
+    if (!tokens || tokens.length === 0) return res.status(400).json({ error: 'invalid_token', message: 'Token not found' });
+    const tokenDoc = tokens[0];
+    if (new Date(tokenDoc.expires_at) < new Date()) return res.status(400).json({ error: 'token_expired', message: 'Token expired' });
+
+    // Create user in Supabase Auth
+    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { full_name: fullName || '' }
+    });
+    if (createError) {
+      if (createError.message.includes('already')) return res.status(400).json({ error: 'user_already_exists', message: 'Already registered' });
+      throw new Error(createError.message);
+    }
+
+    // Create profile
+    try {
+      await supabase.from('profiles').insert({
+        id: newUser.user.id, email,
+        full_name: fullName || '', role: 'user',
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      });
+    } catch (e) { console.error('Profile create error:', e.message); }
+
+    // Delete used token
+    await supabase.from('auth_tokens').delete().eq('id', tokenDoc.id);
+
+    res.json({ success: true, userId: newUser.user.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 12. SEND PASSWORD RESET EMAIL
+app.post('/send-password-reset', async (req, res) => {
+  try {
+    const { email, siteUrl } = req.body;
+    if (!email || !siteUrl) return res.status(400).json({ error: 'Missing email or siteUrl' });
+    const supabase = getAdmin();
+
+    // Check user exists
+    const { data: profile } = await supabase.from('profiles').select('id').eq('email', email).limit(1);
+    if (!profile || profile.length === 0) return res.status(404).json({ error: 'user_not_found', message: 'User not found' });
+
+    const settings = await getSettings(['resend_api_key', 'resend_from_email', 'resend_from_name']);
+    if (!settings.resend_api_key || !settings.resend_from_email) return res.status(500).json({ error: 'Email not configured' });
+
+    // Cleanup old reset tokens
+    await supabase.from('auth_tokens').delete().eq('email', email).eq('token_type', 'password_reset');
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await supabase.from('auth_tokens').insert({
+      id: crypto.randomUUID(), email, token, token_type: 'password_reset',
+      expires_at: new Date(Date.now() + 3600000).toISOString(), // 1 hour
+      created_at: new Date().toISOString()
+    });
+
+    const resetUrl = `${siteUrl}/student/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+    const html = `<div style="font-family:sans-serif;background:#0a0a0f;color:#fff;padding:40px 20px;"><div style="max-width:600px;margin:0 auto;background:linear-gradient(135deg,rgba(0,255,249,0.1),rgba(255,0,110,0.05));border:1px solid rgba(0,255,249,0.3);border-radius:12px;padding:40px;"><h1 style="color:#00fff9">VIBECODING</h1><p style="color:#ccc">Запрос на сброс пароля.</p><div style="text-align:center;margin:25px 0"><a href="${resetUrl}" style="display:inline-block;background:linear-gradient(135deg,#00fff9,#00b8b0);color:#000;text-decoration:none;padding:16px 32px;border-radius:8px;font-weight:bold;">СБРОСИТЬ ПАРОЛЬ</a></div><p style="color:#ff6b6b;font-size:14px">Ссылка действительна 1 час.</p></div></div>`;
+
+    const result = await sendResend(settings.resend_api_key, {
+      from: `${settings.resend_from_name || 'VIBECODING'} <${settings.resend_from_email}>`,
+      to: [email], subject: 'VIBECODING - Сброс пароля', html
+    });
+    await logEmail({ resend_email_id: result.id, recipient_email: email, subject: 'Сброс пароля', template_type: 'password_reset', status: 'sent' });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 13. VERIFY RESET TOKEN
+app.post('/verify-reset-token', async (req, res) => {
+  try {
+    const { token, email } = req.body;
+    if (!token || !email) return res.status(400).json({ valid: false, error: 'missing_fields' });
+    const supabase = getAdmin();
+    const { data: tokens } = await supabase.from('auth_tokens')
+      .select('*').eq('token', token).eq('email', email).eq('token_type', 'password_reset').limit(1);
+    if (!tokens || tokens.length === 0) return res.json({ valid: false, error: 'invalid_token', message: 'Token not found' });
+    if (new Date(tokens[0].expires_at) < new Date()) return res.json({ valid: false, error: 'token_expired', message: 'Token expired' });
+    res.json({ valid: true, error: null, message: null });
+  } catch (e) { res.status(500).json({ valid: false, error: e.message }); }
+});
+
+// 14. RESET PASSWORD
+app.post('/reset-password', async (req, res) => {
+  try {
+    const { token, email, newPassword } = req.body;
+    if (!token || !email || !newPassword) return res.status(400).json({ error: 'Missing fields' });
+    const supabase = getAdmin();
+
+    const { data: tokens } = await supabase.from('auth_tokens')
+      .select('*').eq('token', token).eq('email', email).eq('token_type', 'password_reset').limit(1);
+    if (!tokens || tokens.length === 0) return res.status(400).json({ error: 'invalid_token' });
+    if (new Date(tokens[0].expires_at) < new Date()) return res.status(400).json({ error: 'token_expired' });
+
+    // Find user by email
+    const { data: { users } } = await supabase.auth.admin.listUsers();
+    const user = users.find(u => u.email === email);
+    if (!user) return res.status(404).json({ error: 'user_not_found' });
+
+    const { error } = await supabase.auth.admin.updateUserById(user.id, { password: newPassword });
+    if (error) throw new Error(error.message);
+
+    await supabase.from('auth_tokens').delete().eq('id', tokens[0].id);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 15. AUTH EXCHANGE (Google OAuth cross-subdomain helper)
+app.get('/auth-exchange', async (req, res) => {
+  try {
+    const origin = req.query.origin;
+    if (!origin) return res.status(400).send('Missing origin');
+    // Redirect back to origin with hash fragment (Supabase PKCE puts tokens in URL hash)
+    // The actual session is handled by Supabase Auth via cookies
+    res.redirect(`${origin}/auth/callback${req.url.includes('#') ? req.url.slice(req.url.indexOf('#')) : ''}`);
+  } catch (e) { res.status(500).send('Auth exchange failed'); }
+});
