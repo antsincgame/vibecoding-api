@@ -1,0 +1,63 @@
+# Vibecoding Project — Cursor Rules
+
+## Backend: Appwrite Self-Hosted
+- **Endpoint**: https://appwrite.vibecoding.by/v1
+- **Project ID**: 69aa2114000211b48e63
+- **Database ID**: vibecoding
+- **API Key**: standard_06b8634032f75c7d02d49e7a4add952c4183146ce5def3dc0f4a9df7e18307b29193788a0aa7694e6146ac3339a99eae5de4c3ce24b6a284e41f84dad5683cbc9a60ab5b18084171ad9b9a60d470bbce068b4ee21c8231467bd92bec43c9ed9dcfbe6e23f784c4c77e0c88beeacb60f4a7873f2baa936246a7aa4bacbd3c0d57
+
+## MCP Server
+Используй Appwrite MCP сервер для работы с базой данных. Все операции с данными выполняй через MCP tools (databases, users, storage).
+
+## Коллекции в БД (vibecoding)
+### С данными:
+- **blog_posts** (19) — title, slug, excerpt, content, image_url, meta_title, meta_description, meta_keywords, is_published, published_at, created_at, updated_at
+- **courses** (3) — title, description, duration, age_group, price, image_url, features(JSON string), is_active, order_index, slug, meta_title, meta_description, meta_keywords, seo_text, homework_optional
+- **course_modules** (2) — course_id, title, order_index, created_at, updated_at
+- **course_lessons** (1) — module_id, title, duration, youtube_url, order_index, kinescope_embed, homework_description
+- **faqs** (6) — question, answer, category, order_index, is_active
+- **profiles** (9) — email, full_name, avatar_url, role(admin/user), username, title, bio, location, is_freelancer, response_time, success_rate, freelancer_level, is_online, orders_completed
+- **site_settings** (6) — key, value, description, updated_at
+- **system_settings** (17) — key, value, description, updated_at (содержит resend_api_key, email настройки)
+- **student_works** (6) — student_name, student_age, project_title, project_description, project_url, image_url, tool_type, is_active, order_index
+- **trial_registrations** (9) — age_group, parent_name, child_name, child_age, phone, email, course_id, message, status
+- **founder_questions** (1) — name, email, phone, question, status, answered_at
+- **grodno_applications** (2) — name, phone, email, tariff, comment, source, created_at
+- **email_logs** — resend_email_id, recipient_email, subject, template_type, status, error_message
+- **inbox** (14) — message_id, from_email, from_name, to_email, subject, text_content, html_content, is_read, is_archived
+
+### Пустые (готовы к использованию):
+- auth_tokens, video_testimonials, student_enrollments, lesson_progress, homework_submissions, lesson_files, email_settings, email_templates, lessons, openrouter_settings, webhook_logs
+- fl_categories, fl_gigs, fl_gig_packages, fl_orders, fl_conversations, fl_messages, fl_favorites, fl_reviews
+
+## Storage Buckets
+- **images** — основные изображения
+- **homework-attachments** — файлы домашних заданий
+- **lesson-files** — файлы уроков
+- **video-testimonials** — видео отзывы
+
+## Auth
+- Appwrite Account API (email/password + Google OAuth)
+- При создании пользователя — создавать profile в коллекции profiles с тем же ID
+- Google OAuth настроен
+
+## Архитектура фронтенда
+- React + Vite + TypeScript
+- Shared submodule `@vibecoding/shared` содержит Appwrite-совместимый враппер с API как у Supabase
+- `supabase.from('table').select().eq().order()` — это НЕ Supabase, это Appwrite враппер
+- JSON поля (features и др.) хранятся как строки, парсятся автоматически в враппере
+- Upsert поддерживает `onConflict` параметр
+
+## API (vibecoding-api)
+- Express сервер на https://vibecoding.by/functions/v1
+- node-appwrite SDK
+- Эндпоинты: upload-image, send-email, create-user, delete-user, generate-quote, send-test-email, send-homework-notification, send-verification-email, resend-webhook, inbound-email, verify-email, send-password-reset, verify-reset-token, reset-password, auth-exchange, health
+
+## Деплой
+- Coolify автодеплой через GitHub App (vibecoding-coolify)
+- Push в main → автобилд через Nixpacks
+- Env переменные в Coolify (не в .env файлах)
+
+## Язык
+- Интерфейс на русском
+- Код и комментарии можно на английском
